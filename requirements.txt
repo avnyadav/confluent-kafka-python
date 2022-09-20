@@ -1,0 +1,6 @@
+confluent-kafka
+requests
+six
+pandas
+jsonschema==3.2.0
+-e .

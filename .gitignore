@@ -1,0 +1,7 @@
+.env/*
+.idea
+*.egg-info
+logs/*
+*.log
+*.pyc
+Credential.md
