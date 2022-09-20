@@ -7,7 +7,7 @@ from confluent_kafka.serialization import SerializationContext, MessageField
 from confluent_kafka.schema_registry.json_schema import JSONDeserializer
 from src.entity.car import Car
 from src.kafka_config import sasl_conf
-
+from src.database.mongodb import MongodbOperation
 
 
 
@@ -91,7 +91,7 @@ def main(topic):
 
 
 
-
+    mongodb  = MongodbOperation()
     while True:
         try:
             # SIGINT can't be handled when polling, limit timeout to 1 second.
@@ -101,6 +101,7 @@ def main(topic):
 
             car = json_deserializer(msg.value(), SerializationContext(msg.topic(), MessageField.VALUE))
 
+            mongodb.insert(collection_name="car",record=car.record)
             if car is not None:
                 print("User record {}: car: {}\n"
                       .format(msg.key(), car))
