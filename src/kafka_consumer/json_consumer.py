@@ -1,97 +1,31 @@
-
-
 import argparse
 
 from confluent_kafka import Consumer
 from confluent_kafka.serialization import SerializationContext, MessageField
 from confluent_kafka.schema_registry.json_schema import JSONDeserializer
-from src.entity.car import Car
+from src.entity.generic import Generic
 from src.kafka_config import sasl_conf
 from src.database.mongodb import MongodbOperation
 
 
 
 
-def main(topic):
-
-    schema_str = """
-    {
-  "$id": "http://example.com/myURI.schema.json",
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "additionalProperties": false,
-  "description": "Sample schema to help you get started.",
-  "properties": {
-    "brand": {
-      "description": "The type(v) type is used.",
-      "type": "string"
-    },
-    "car_name": {
-      "description": "The type(v) type is used.",
-      "type": "string"
-    },
-    "engine": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    },
-    "fuel_type": {
-      "description": "The type(v) type is used.",
-      "type": "string"
-    },
-    "km_driven": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    },
-    "max_power": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    },
-    "mileage": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    },
-    "model": {
-      "description": "The type(v) type is used.",
-      "type": "string"
-    },
-    "seats": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    },
-    "seller_type": {
-      "description": "The type(v) type is used.",
-      "type": "string"
-    },
-    "selling_price": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    },
-    "transmission_type": {
-      "description": "The type(v) type is used.",
-      "type": "string"
-    },
-    "vehicle_age": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    }
-  },
-  "title": "SampleRecord",
-  "type": "object"
-}
-    """
+def consumer_using_sample_file(topic,file_path):
+    schema_str = Generic.get_schema_to_produce_consume_data(file_path=file_path)
     json_deserializer = JSONDeserializer(schema_str,
-                                         from_dict=Car.dict_to_car)
+                                         from_dict=Generic.dict_to_object)
 
     consumer_conf = sasl_conf()
     consumer_conf.update({
-                     'group.id': 'group1',
-                     'auto.offset.reset': "earliest"})
+        'group.id': 'group1',
+        'auto.offset.reset': "earliest"})
 
     consumer = Consumer(consumer_conf)
     consumer.subscribe([topic])
 
-
-
-    mongodb  = MongodbOperation()
+    mongodb = MongodbOperation()
+    records = []
+    x = 0
     while True:
         try:
             # SIGINT can't be handled when polling, limit timeout to 1 second.
@@ -99,14 +33,17 @@ def main(topic):
             if msg is None:
                 continue
 
-            car = json_deserializer(msg.value(), SerializationContext(msg.topic(), MessageField.VALUE))
+            record: Generic = json_deserializer(msg.value(), SerializationContext(msg.topic(), MessageField.VALUE))
 
-            mongodb.insert(collection_name="car",record=car.record)
-            if car is not None:
-                print("User record {}: car: {}\n"
-                      .format(msg.key(), car))
+            # mongodb.insert(collection_name="car",record=car.record)
+
+            if record is not None:
+                records.append(record.to_dict())
+                if x % 5000 == 0:
+                    mongodb.insert_many(collection_name="car", records=records)
+                    records = []
+            x = x + 1
         except KeyboardInterrupt:
             break
 
     consumer.close()
-

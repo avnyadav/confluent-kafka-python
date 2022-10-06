@@ -20,7 +20,7 @@
 
 import argparse
 from uuid import uuid4
-from src.kafka_config import sasl_conf,schema_config
+from src.kafka_config import sasl_conf, schema_config
 from six.moves import input
 from src.kafka_logger import logging
 from confluent_kafka import Producer
@@ -29,24 +29,12 @@ from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.json_schema import JSONSerializer
 import pandas as pd
 from typing import List
-from src.entity.car import Car
+from src.entity.generic import Generic, instance_to_dict
 
-FILE_PATH = "/home/avnish/iNeuron_Private_Intelligence_Limited/BigDataProject/kafka/cardekho_dataset.csv"
-columns=['car_name', 'brand', 'model', 'vehicle_age', 'km_driven', 'seller_type',
-       'fuel_type', 'transmission_type', 'mileage', 'engine', 'max_power',
-       'seats', 'selling_price']
+FILE_PATH = "/home/avnish/iNeuron_Private_Intelligence_Limited/industry_ready_project/projects/data_pipeline/kafka-sensor/sample_data/sensor/aps_failure_training_set1.csv"
 
 
-def get_car_instance(file_path):
-    df=pd.read_csv(file_path)
-    df=df.iloc[:,1:]
-    cars:List[Car]=[]
-    for data in df.values:
-        car=Car(dict(zip(columns,data)))
-        cars.append(car)
-        yield car
-
-def car_to_dict(car:Car, ctx):
+def car_to_dict(car: Generic, ctx):
     """
     Returns a dict representation of a User instance for serialization.
     Args:
@@ -55,6 +43,7 @@ def car_to_dict(car:Car, ctx):
             operation.
     Returns:
         dict: Dict populated with user attributes to be serialized.
+        :param car:
     """
 
     # User._address must not be serialized; omit from dict
@@ -76,92 +65,27 @@ def delivery_report(err, msg):
         msg.key(), msg.topic(), msg.partition(), msg.offset()))
 
 
-def main(topic):
-
-    schema_str = """
-    {
-  "$id": "http://example.com/myURI.schema.json",
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "additionalProperties": false,
-  "description": "Sample schema to help you get started.",
-  "properties": {
-    "brand": {
-      "description": "The type(v) type is used.",
-      "type": "string"
-    },
-    "car_name": {
-      "description": "The type(v) type is used.",
-      "type": "string"
-    },
-    "engine": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    },
-    "fuel_type": {
-      "description": "The type(v) type is used.",
-      "type": "string"
-    },
-    "km_driven": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    },
-    "max_power": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    },
-    "mileage": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    },
-    "model": {
-      "description": "The type(v) type is used.",
-      "type": "string"
-    },
-    "seats": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    },
-    "seller_type": {
-      "description": "The type(v) type is used.",
-      "type": "string"
-    },
-    "selling_price": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    },
-    "transmission_type": {
-      "description": "The type(v) type is used.",
-      "type": "string"
-    },
-    "vehicle_age": {
-      "description": "The type(v) type is used.",
-      "type": "number"
-    }
-  },
-  "title": "SampleRecord",
-  "type": "object"
-}
-    """
+def product_data_using_file(topic,file_path):
+    schema_str = Generic.get_schema_to_produce_consume_data(file_path=file_path)
     schema_registry_conf = schema_config()
     schema_registry_client = SchemaRegistryClient(schema_registry_conf)
 
     string_serializer = StringSerializer('utf_8')
-    json_serializer = JSONSerializer(schema_str, schema_registry_client, car_to_dict)
+    json_serializer = JSONSerializer(schema_str, schema_registry_client, instance_to_dict)
 
     producer = Producer(sasl_conf())
 
     print("Producing user records to topic {}. ^C to exit.".format(topic))
-    #while True:
-        # Serve on_delivery callbacks from previous calls to produce()
+    # while True:
+    # Serve on_delivery callbacks from previous calls to produce()
     producer.poll(0.0)
     try:
-        for car in get_car_instance(file_path=FILE_PATH):
-
-            print(car)
+        for instance in Generic.get_object(file_path=file_path):
+            print(instance)
             producer.produce(topic=topic,
-                            key=string_serializer(str(uuid4()),car_to_dict),
-                            value=json_serializer(car, SerializationContext(topic, MessageField.VALUE)),
-                            on_delivery=delivery_report)
+                             key=string_serializer(str(uuid4()), instance.to_dict()),
+                             value=json_serializer(instance, SerializationContext(topic, MessageField.VALUE)),
+                             on_delivery=delivery_report)
     except KeyboardInterrupt:
         pass
     except ValueError:
@@ -170,4 +94,3 @@ def main(topic):
 
     print("\nFlushing records...")
     producer.flush()
-
